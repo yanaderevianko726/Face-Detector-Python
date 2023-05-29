@@ -40,29 +40,9 @@ max_amount = 0
 
 dcount = 0
 button_quit = None
-   
-inpWidth = 416   
-inpHeight = 416
-confThreshold = 0.6  
-nmsThreshold = 0.4
-
-writer = None
-W = None
-H = None
-
-ct = CentroidTracker(maxDisappeared=40, maxDistance=50)
-trackers = []
-trackableObjects = {}
 
 totalDown = 0
 totalUp = 0
-
-modelConfiguration = "yolov3.cfg"
-modelWeights = "yolov3.weights"
-
-net = cv2.dnn.readNetFromDarknet(modelConfiguration, modelWeights)
-net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
-net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL)
 
 def stop_counting():
     evt.set()
@@ -136,95 +116,6 @@ def change_status(current_in):
 
     count_text = "{}".format(current_in)
     count_label.configure(text=count_text) 
-    
-# Remove the bounding boxes with low confidence using non-maxima suppression
-def postprocess(frame, outs):
-    frameHeight = frame.shape[0]
-    frameWidth = frame.shape[1]
-
-    rects = []
-    classIds = []
-    confidences = []
-    boxes = []
-    
-    for out in outs:
-        for detection in out:
-            scores = detection[5:]
-            classId = np.argmax(scores)
-            confidence = scores[classId]
-            
-            if confidence > confThreshold:
-                center_x = int(detection[0] * frameWidth)
-                center_y = int(detection[1] * frameHeight)
-                width = int(detection[2] * frameWidth)
-                height = int(detection[3] * frameHeight)
-                left = int(center_x - width / 2)
-                top = int(center_y - height / 2)
-                classIds.append(classId)
-                confidences.append(float(confidence))
-                boxes.append([left, top, width, height])
-
-    indices = cv2.dnn.NMSBoxes(boxes, confidences, confThreshold, nmsThreshold)
-    for i in indices:
-        box = boxes[i]
-        left = box[0]
-        top = box[1]
-        width = box[2]
-        height = box[3]
-        
-        if classIds[i] == 0:
-            rects.append((left, top, left + width, top + height))
-            objects = ct.update(rects)
-            counting(objects, frame)
-
-def counting(objects, frame):
-    global totalDown
-    global totalUp
-    
-    frameHeight = frame.shape[0]
-    frameWidth = frame.shape[1]
-
-    for (objectID, centroid) in objects.items():
-        to = trackableObjects.get(objectID, None)
-        
-        if to is None:
-            to = TrackableObject(objectID, centroid)
-        else:
-            x = [c[0] for c in to.centroids]
-            direction = centroid[0] - np.mean(x)
-            to.centroids.append(centroid)
-            
-            if not to.counted:
-                if direction < 0 and centroid[0] in range(frameWidth//2 - 30, frameWidth//2 + 30):
-                    totalUp += 1
-                    to.counted = True
-                elif direction > 0 and centroid[0] in range(frameWidth//2 - 30, frameWidth//2 + 30):
-                    totalDown += 1
-                    to.counted = True
-                    
-        trackableObjects[objectID] = to
-        cv2.circle(frame, (int(centroid[0]), int(centroid[1])), 4, (0, 255, 0), -1)
-        
-        draw_str(frame, (20, 40), 'passed people: %d' % totalUp)
-        draw_str(frame, (20, 64), 'passed people: %d' % totalDown)
-        
-    info = [
-        ("Up", totalUp),
-        ("Down", totalDown),
-    ]
-
-    # loop over the info tuples and draw them on our frame
-    for (i, (k, v)) in enumerate(info):
-
-        text = "{}".format(v)
-        if k == 'Up':
-            draw_str(frame, (20, 40), 'passed people: %s' % text)
-        if k == 'Down':
-            draw_str(frame, (20, 64), 'passed people: %s' % text)
-            
-def getOutputsNames(net):
-    layersNames = net.getLayerNames()
-    return [layersNames[i - 1] for i in net.getUnconnectedOutLayers()]
 
 def update():
     global root 
@@ -254,11 +145,6 @@ class FaceCounter:
             
             winName = 'People Counting System'
             
-            blob = cv2.dnn.blobFromImage(frame, 1/255, (inpWidth, inpHeight), [0,0,0], 1, crop=True)
-            net.setInput(blob)
-            outs = net.forward(getOutputsNames(net))
-            postprocess(frame, outs)
-            
             cv2.imshow(winName, frame)
             
             if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -267,15 +153,8 @@ class FaceCounter:
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='People Tracking and Counting Project')
-    parser.add_argument('--video', help='Path to video file.')
-    
+    parser.add_argument('--video', help='Path to video file.')    
     args = parser.parse_args()
-    
-    # Load names of classes
-    classesFile = "coco.names"
-    classes = None
-    with open(classesFile, 'rt') as f:
-        classes = f.read().rstrip('\n').split('\n')
     
     root = tk.Tk()
     root.title("Sentinel")
